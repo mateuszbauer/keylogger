@@ -37,7 +37,8 @@ static void enable_write_protection(void) {
 int sys_calls_init(void) {
 	disable_write_protection();
 
-	syscall_table = (unsigned long *)0xffffffff8bc00300;
+	// TODO: make it dynamic, not hard coded
+	syscall_table = (unsigned long *)0xffffffff84c00300;
 	original_mkdir = (mkdir_t)syscall_table[__NR_mkdir];
 	syscall_table[__NR_mkdir] = (sys_call_ptr_t)hacked_mkdir;
 
