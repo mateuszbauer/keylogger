@@ -3,7 +3,7 @@
 
 #include <linux/keyboard.h>
 
-int keyboard_init(void);
+void keyboard_init(void);
 
 void keyboard_cleanup(void);
 

